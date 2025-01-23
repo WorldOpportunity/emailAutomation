@@ -1,4 +1,5 @@
 import logging
+from informacoes_sensiveis import informacoes_sensiveis
 
 class erros():
     def __init__(self,quant = 0):
@@ -11,9 +12,9 @@ class Config_class():
         self.intervalo_max            =  7.5
         self.EMAIL_HOST               =  "smtp.hostinger.com"
         self.EMAIL_PORT               =  587
-        self.EMAIL_USER               =  "no-reply@worldopportunity.com.br"
-        self.EMAIL_PASSWORD           =  "#Curso123456"
-        self.FROM_EMAIL               =  "no-reply@worldopportunity.com.br"
+        self.EMAIL_USER               =  informacoes_sensiveis.email
+        self.EMAIL_PASSWORD           =  informacoes_sensiveis.senha
+        self.FROM_EMAIL               =  informacoes_sensiveis.email
         self.LOG_FILE                 =  "email_log.txt"
         self.LIMITE_DIARIO            =  100  # Número máximo de e-mails a serem enviados por dia
         self.emails_enviados          =  []
