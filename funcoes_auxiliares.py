@@ -11,6 +11,10 @@ def eh_data_valida(string):
     """
     if string is None:
         return False
+    
+    # Se a string tiver data e hora, separa apenas a parte da data
+    if ' ' in string:
+        string = string.split(' ')[0]
     formatos_comuns = [
         "%d/%m/%Y",  # Dia/Mês/Ano (31/12/2025)
         "%m/%d/%Y",  # Mês/Dia/Ano (12/31/2025)
@@ -42,20 +46,30 @@ def numero_para_letra_coluna(numero):
         numero, resto = divmod(numero - 1, 26)
         letras = chr(resto + 65) + letras
     return letras
-
-def extrair_email(string):
+def get_cargo(row,colunas_existentes):
+    try:
+        cargo=row[colunas_existentes["CARGO"]]
+        return cargo
+    except err:
+        print(f'erro ao procurar o cargo: {err}')
+        return ''
+def extrair_email(string,filtro = ''):
     # Expressão regular para detectar um e-mail válido
     padrao_email = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
     
     # Procurar por um e-mail na string
     try:
-        resultado = re.findall(padrao_email, string)
-        
-        # Se encontrar algum e-mail, retorna o primeiro encontrado, caso contrário, retorna None
-        if resultado:
-            return resultado[0]
-        else:
-            return None
+        emails = re.findall(padrao_email, string)
+        if emails:
+            if filtro:
+                # Retorna o primeiro e-mail que contém o filtro, se houver
+                for email in emails:
+                    if filtro.lower() in email.lower():
+                        return email
+                return None  # Nenhum e-mail atende ao filtro
+            else:
+                return emails[0]  # Retorna o primeiro e-mail encontrado
+        return None # não encontrou e-mail
     except:
         return None
 
@@ -91,7 +105,7 @@ def obter_indice_coluna(colunas_existentes, nome_coluna):
 ##                    server.login(config.EMAIL_USER, config.EMAIL_PASSWORD)
 ##                    server.sendmail(config.FROM_EMAIL, email, msg.as_string())
 ##                    config.contador_emails_enviados += 1  # Incrementando o contador
-##                    config.emails_enviados.append(email)
+##                    config.atualiza_Emails_enviados(email)
 ##                    print(f'E-mail enviado com sucesso para {email}. E-mails enviados hoje: {config.contador_emails_enviados}/{config.LIMITE_DIARIO}')
 ##                    resultado = True
 ##                except smtplib.SMTPConnectError as e:

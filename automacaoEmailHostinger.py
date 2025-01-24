@@ -1,7 +1,6 @@
 import asyncio , time , smtplib ,  openpyxl , random ,  os , copy 
 from datetime import datetime
-from Config import Config_instance
-config = Config_instance().config
+from Config import Config_class as config
 from loggerManager import LoggerManager
 loggerProgressManager = LoggerManager()
 from EmailManager import EmailManager
@@ -9,8 +8,53 @@ EmailManager = EmailManager()
 import funcoes_auxiliares as FAs
 
 
+def condicao_enviar_email(email,primeiro_email,segundo_email,terceiro_email):
+    """essa função retorna falso se não for pra enviar e-mail e retorna o numero do email que é para ser enviado caso seja para enviar
+        elsa assume que todos os valores são validos 
+"""
+##    print('')
+##    print(f'o email: {email} com as datas {primeiro_email}  {segundo_email}  {terceiro_email}')
+    if not email or email in config.emails_enviados: # valida se é um email e ve se esse email ja consta nos enviados
+##        print('retornou False')
+        return False
+    if FAs.eh_data_valida(primeiro_email):
+        if dias_passados(primeiro_email)  <  config.intervalo_entre_emails:
+##            print('retornou False')
+            return False
+        else:
+            if FAs.eh_data_valida(segundo_email):
+                if dias_passados(segundo_email)  <  config.intervalo_entre_emails:
+##                    print('retornou False')
+                    return False
+                else:
+                    if FAs.eh_data_valida(terceiro_email):
+##                        print('retornou False')
+                        return False
+                    else:
+##                        print('retornou 3')
+                        return 3
+            else:
+##                print('retornou 2')
+                return 2
+    else:
+##        print('retornou 1')
+        return 1  #### para enviar o primeiro email
+    
 
-def atualiza_planilha_com_logs(planilha, loggerProgressManager):
+def pega_email_e_datas_da_linha(linha , colunas_existentes):
+    valores=[]
+    try:
+        valores=[x.value for x in linha]
+        linha = valores
+    except:
+        pass
+    email = FAs.extrair_email(linha[colunas_existentes["EMAIL"]],filtro='rh')
+    primeiro_email = linha[colunas_existentes['Primeiro E-MAIL ENVIADO?']]
+    segundo_email  = linha[colunas_existentes['Segundo email enviado?']]
+    terceiro_email = linha[colunas_existentes['Terceiro email enviado?']]
+    return email , primeiro_email  ,  segundo_email  ,  terceiro_email
+
+def atualiza_planilha_com_logs(planilha, loggerProgressManager, colunas_existentes):
     """
     Carrega as alterações persistidas anteriormente no LoggerManager para a planilha.
 
@@ -23,13 +67,15 @@ def atualiza_planilha_com_logs(planilha, loggerProgressManager):
     """
 ##    try:
         # Obtém o estado de todas as alterações registradas
+    global sheet
     estados_salvos = loggerProgressManager.get_all_state()
-        
+    
     if not isinstance(estados_salvos, dict):
         raise ValueError("O estado retornado por get_all_state não é um dicionário válido.")
         
         # Itera pelas coordenadas e valores salvos
     print(f'começando a atualizaçao de valores ( {len(estados_salvos)} ) na tabela de acordo com os dados dos logs')
+    linhas_para_verificar=set()
     for coordenadas, valor in estados_salvos.items():
         if (
                 not isinstance(coordenadas, tuple) 
@@ -41,7 +87,18 @@ def atualiza_planilha_com_logs(planilha, loggerProgressManager):
         linha, coluna = coordenadas
         letra_da_coordenada= f"{FAs.numero_para_letra_coluna(coluna)}{linha}"
         planilha[letra_da_coordenada] = valor  # Atualiza a célula com o valor salvo
-        print(f' a coordenada {letra_da_coordenada} foi atualizada para: {planilha[letra_da_coordenada].value}')
+        linhas_para_verificar.add(linha)
+
+    for linha in linhas_para_verificar:
+        linha  =  planilha[linha]
+        email,primeiro_email,segundo_email,terceiro_email = pega_email_e_datas_da_linha(linha , colunas_existentes)
+        if not condicao_enviar_email(email,primeiro_email,segundo_email,terceiro_email):
+            config.atualiza_Emails_enviados(linha[colunas_existentes["EMAIL"]]) #adiciona o email referente ao valor ja salvo aos emails enviados
+    print('numero de emails que ja enviei e que não é para enviar ainda: ',len(config.emails_enviados))
+                                                                   
+                
+    print('terminei de atualizar os valores')                
+##        print(f' a coordenada {letra_da_coordenada} foi atualizada para: {planilha[letra_da_coordenada].value}')
 ##    except Exception as e:
 ####        loggerProgressManager.log_error(f"Erro ao carregar planilha: {str(e)}")
 ##        raise
@@ -55,26 +112,50 @@ def carregar_planilha():
     workbook = openpyxl.load_workbook(config.nome_planilha)
     sheet = workbook.active
         ## com sorte, esse codigo vai carregar as mudanças registradas no logger dentro da versão na memória da planilha
-    atualiza_planilha_com_logs(sheet, loggerProgressManager)
-    return sheet, workbook
+##    print('o tipo do sheet antes da ajustar colunas é: ',sheet)
+    tiveQueCriar,colunas_existentes = ajustar_colunas(sheet)
+##    print('o tipo do sheet depois da ajustar_colunas e antes da atualiza_planilha_com_logs é: ',sheet)
+    atualiza_planilha_com_logs(sheet, loggerProgressManager , colunas_existentes)
+##    print('o tipo do sheet depois do atualiza_planilha_com_logs é: ',sheet)
+    
+    return tiveQueCriar , colunas_existentes , sheet , workbook
 
-##    except FileNotFoundError as e:
-##        config.logging.error(f"Erro ao carregar o arquivo: {str(e)}")
-##        print(str(e))
-##        return None, None  # Retorna None para indicar falha, mas não encerra o programa
-##    except Exception as e:
-##        config.logging.error(f"Erro ao carregar a planilha: {str(e)}")
-##        print(f"Erro ao carregar a planilha: {str(e)}")
-##        return None, None  # Retorna None para indicar falha, mas não encerra o programa
-sheet, workbook = carregar_planilha()
+def ajustar_colunas(sheet):
+    colunas_necessarias = ['EMAIL', 'Nome Completo', 'Primeiro E-MAIL ENVIADO?', 'Segundo email enviado?', 'Terceiro email enviado?']
+    header = sheet[1]
+    colunas_existentes = [cell.value for cell in header]
+    novasColunas={}
+    for index,value in enumerate(colunas_existentes):
+        novasColunas[value]  =  index 
 
+    colunas_existentes = novasColunas
+    # Se alguma coluna necessária não existir, criá-la
+    tiveQueCriar = False
+    for coluna in colunas_necessarias:
+        if coluna not in colunas_existentes:
+            sheet.cell(row=1, column=len(colunas_existentes) + 1, value=coluna)
+            colunas_existentes[coluna] = len(colunas_existentes) + 1
+            print(f"Coluna '{coluna}' criada.")
+            tiveQueCriar = True
+            
+    if tiveQueCriar:
+        print('tive que criar coluna nova dentro do ajustar coluna')
+        sheet, workbook = carregar_planilha()
+        if sheet is None or workbook is None:
+            config.logging.error("Não foi possível carregar a planilha, o processo será encerrado.")
+            print("Não foi possível carregar a planilha. Encerrando o programa.")
+            return  # Não prosseguir se a planilha não foi carregada corretamente
+    return tiveQueCriar,colunas_existentes
 
 def altera_e_salva(row_index,column_index,value,sheet,workbook):
-    letra_da_tabela=FAs.numero_para_letra_coluna(column_index)
+    coluna_na_tabela  =  column_index + 1
+    letra_da_tabela   =  FAs.numero_para_letra_coluna(coluna_na_tabela)
+    linha_da_tabela   =  row_index  +  1
 ##    print(f'a sigla usada para acesar a celula na hora de alterar é: {letra_da_tabela}{row_index}')
-    coordenada = f"{letra_da_tabela}{row_index}"
+    coordenada = f"{letra_da_tabela}{linha_da_tabela}"
     sheet[coordenada].value = value
-    loggerProgressManager.update(row_index, column_index = column_index + 1, new_value = value)
+    print(f'no altera e salva temos o row_index = {row_index} o column_index = {column_index} e a coordenada mudada na tabela é: {coordenada} porem o index salvo nos logs para ser pego acrescenta + 1')
+    loggerProgressManager.update(row_index = linha_da_tabela, column_index = coluna_na_tabela , new_value = value)
 ##    print(f'alterei a tabela e o valor da celula {coordenada}  é ' )
 ##    print(sheet[coordenada].value)
     #salvar_planilha_sem_continuar(workbook,sheet)
@@ -85,39 +166,14 @@ def dias_passados(data_str = datetime.now()):
         if data_str  ==  'sim':
             return 0
         
-        data_email = datetime.strptime(data_str, '%Y-%m-%d %H:%M:%S')  # Converte string de data para objeto datetime
-        data_atual = datetime.now()  # Obtém a data e hora atuais
+        data_email = datetime.strptime(data_str, '%Y-%m-%d %H:%M:%S').replace(hour=0, minute=0, second=0, microsecond=0)  # Converte string de data para objeto datetime
+        data_atual = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)  # Obtém a data e hora atuais
         delta = data_atual - data_email  # Calcula a diferença de tempo
+##        print(f'diferença de dias foi:{delta}')
         return delta.days  # Retorna o número de dias passados
     except Exception as e:
         config.logging.error(f"Erro ao calcular dias passados: {str(e)}")
         return 0  # Retorna 0 em caso de erro, evitando que o erro cause falha no processamento
-
-
-
-def ajustar_colunas(sheet):
-    colunas_necessarias = ['EMAIL', 'Nome Completo', 'Primeiro E-MAIL ENVIADO?', 'Segundo email enviado?', 'Terceiro email enviado?']
-    header = sheet[1]
-####    print('o heather é:   ',header)
-##    print('o tipo do header é:  ',type(header))
-    # Verificando as colunas existentes
-    colunas_existentes = [cell.value for cell in header]
-    novasColunas={}
-    for index,value in enumerate(colunas_existentes):
-        novasColunas[value]  =  index 
-
-    colunas_existentes = novasColunas
-##    print("colunas existentes é:",colunas_existentes)
-    # Se alguma coluna necessária não existir, criá-la
-    tiveQueCriar = False
-    for coluna in colunas_necessarias:
-        if coluna not in colunas_existentes:
-            sheet.cell(row=1, column=len(colunas_existentes) + 1, value=coluna)
-            colunas_existentes[coluna] = len(colunas_existentes) + 1
-            print(f"Coluna '{coluna}' criada.")
-            tiveQueCriar = True        
-
-    return tiveQueCriar,colunas_existentes
 
 
 # Função para salvar a planilha com re-tentativas
@@ -180,145 +236,139 @@ def trata_erros_nos_emails_e_salva_planilha(resultado,logging,erros_consecutivos
         
         elif resultado == 'Destinatário recusado': # Marcar como inválido
             ########################### preciso implementar a mudança na planilha em si.... não só na linha 'in memory'
-##            row[colunas_existentes['Primeiro E-MAIL ENVIADO?']]  = 'Email inválido'
             sheet, coordenada  = altera_e_salva(row_index,indice_email,'Email inválido',sheet,workbook)
-##            print('alterei nos logs o registro de um e-mail inválido')
 
         elif resultado == 'Erro inesperado':
             pass    # Manter tentativa de envio
             
         else:
-##                    indiceDoEmail  =  colunas_existentes['Primeiro EMAIL ENVIADO?']
-##            print('alterando tabela devido a email enviado com sucesso')
-##                    sheet  = await altera_tabela(row_index,indice_primeiro_email,time.strftime('%Y-%m-%d %H:%M:%S'),sheet,workbook)
             sheet, coordenada  = altera_e_salva(row_index,indice_email,time.strftime('%Y-%m-%d %H:%M:%S'),sheet,workbook)
-            
-##            print("depois de assar pela função que altera o valor da celula é: ",sheet[coordenada].value)
-##            row[colunas_existentes[valor_colunas_existentes]]  = time.strftime('%Y-%m-%d %H:%M:%S')
-
-
         
 # Função para processar os e-mails
-async def processar_emails():
-    global config
-    global sheet, workbook 
-    
+async def processar_emails(config,sheet,workbook,fechar_programa):
+##    print('o tipo do sheet no inicio do processar_emails  é: ',type(sheet))
+##    print('o sheet é:',sheet)
 
     # Verifica se a planilha foi carregada corretamente
-    if sheet is None or workbook is None:
+    if sheet is None or workbook is None or fechar_programa:
         config.logging.error("Não foi possível carregar a planilha, o processo será encerrado.")
         print("Não foi possível carregar a planilha. Encerrando o programa.")
         return  # Não prosseguir se a planilha não foi carregada corretamente
 
     if config.contador_emails_enviados >= config.LIMITE_DIARIO:
-##        config.logging.info(f"Limite de {config.LIMITE_DIARIO} e-mails enviados no dia alcançado. Encerrando o programa.")
+        config.logging.info(f"Limite de {config.LIMITE_DIARIO} e-mails enviados no dia alcançado às {datetime.now()}")
 ##        print(f"Limite de {config.LIMITE_DIARIO} e-mails enviados no dia alcançado. ")
         print('vou descansar por uma hora')
         await asyncio.sleep(60*60)        
-        config.contador_emails_enviados=0
+        config.contador_emails_enviados=0  ## reiniciando a contagem de emails ate o próximo intervalo
+        config.logging.info(f"voltei a enviar e-mail às {datetime.now()}")
     else:
         pass
-##        print(f'o contador de emails enviados no config é: {config.contador_emails_enviados} e o limite de emails diario é: {config.LIMITE_DIARIO}')
-    
-    tiveQueCriar,colunas_existentes = ajustar_colunas(sheet)
-    if tiveQueCriar:
-        print('tive que criar coluna nova')
-        sheet, workbook = carregar_planilha()
-        if sheet is None or workbook is None:
-            config.logging.error("Não foi possível carregar a planilha, o processo será encerrado.")
-            print("Não foi possível carregar a planilha. Encerrando o programa.")
-            return  # Não prosseguir se a planilha não foi carregada corretamente
-            
     row_index = 2  # Começando da segunda linha para evitar o cabeçalho
 
     semaphore = asyncio.Semaphore(2)  # Limita para 2 e-mails sendo enviados ao mesmo tempo
 
     # Loop para percorrer as linhas da planilha
+##    print('o tipo do sheet antes da linha do erro é: ',type(sheet))
+##    print('o sheet antes da linha do erro é: ',sheet)
+    corpo_primeiro_email = str(sheet[2][colunas_existentes['Corpo primeiro e-mail'  ]].value   or "Mensagem padrão caso o corpo não esteja definido.") ## aqui retorna o valor do email como string
+    corpo_segundo_email  = str(sheet[2][colunas_existentes['Corpo segundo e-mail'   ]].value   or "Mensagem padrão caso o corpo não esteja definido.") ## aqui retorna o valor do email como string         
+    corpo_terceiro_email = str(sheet[2][colunas_existentes['Terceiro email enviado?']].value   or "Mensagem padrão caso o corpo não esteja definido.") ## aqui retorna o valor do email como string
+
+    indice_primeiro_email  = FAs.obter_indice_coluna(colunas_existentes, 'Primeiro E-MAIL ENVIADO?') ## aqui retorna o valor do indice como int
+    letra_indice_primeiro_email = FAs.numero_para_letra_coluna(indice_primeiro_email)
+    
+    indice_segundo_email   = FAs.obter_indice_coluna(colunas_existentes, 'Segundo email enviado?')## aqui retorna o valor do indice como int
+    letra_segundo_primeiro_email = FAs.numero_para_letra_coluna(indice_segundo_email)
+    
+    indice_terceiro_email  = FAs.obter_indice_coluna(colunas_existentes, 'Terceiro email enviado?')## aqui retorna o valor do indice como int
+    letra_terceiro_primeiro_email  = FAs.numero_para_letra_coluna(indice_terceiro_email)                         
+
     while row_index <= sheet.max_row:
-##            print(row_index)
-        try:
-            if config.contador_emails_enviados >= config.LIMITE_DIARIO:
-                config.logging.info(f"Limite de {config.LIMITE_DIARIO} e-mails enviados no dia alcançado. Encerrando o programa.")
-                print(f"Limite de {config.LIMITE_DIARIO} e-mails enviados no dia alcançado. descansando...")
-                asyncio.sleep(60*60)
-                config.contador_emails_enviados = 0
-                print('reiniciando o trabalho')
+##        try:
+        if config.contador_emails_enviados >= config.LIMITE_DIARIO:
+            config.logging.info(f"Limite de {config.LIMITE_DIARIO} e-mails enviados no dia alcançado às {datetime.now()}")
+        ##        print(f"Limite de {config.LIMITE_DIARIO} e-mails enviados no dia alcançado. ")
+            print('vou descansar por uma hora')
+            await asyncio.sleep(60*60)        
+            config.contador_emails_enviados=0  ## reiniciando a contagem de emails ate o próximo intervalo
+            config.logging.info(f"voltei a enviar e-mail às {datetime.now()}")
+            print('reiniciando o trabalho')
 ##                break  # Interrompe o loop se o limite de e-mails foi alcançado
-            else:
-                pass
-##                print(f'o contador de emails enviados no config é: {config.contador_emails_enviados} e o limite de emails diario é: {config.LIMITE_DIARIO}')
-            row   = [ x.value for x in sheet[row_index]]
-            nome  = str( row[colunas_existentes['Nome Completo']] or '')
-            email = FAs.extrair_email(row[colunas_existentes['EMAIL']])
-##            print(f"o numero da colçuna de emails é: {colunas_existentes['EMAIL']}")
-
-            
-            corpo_primeiro_email = str([x.value for x in sheet[2]][colunas_existentes['Corpo primeiro e-mail']] or "Mensagem padrão caso o corpo não esteja definido.")
-            corpo_segundo_email  = str([x.value for x in sheet[2]][colunas_existentes['Corpo segundo e-mail']] or "Mensagem padrão caso o corpo não esteja definido.")         
-            corpo_terceiro_email = str([x.value for x in sheet[2]][colunas_existentes['Terceiro email enviado?']] or "Mensagem padrão caso o corpo não esteja definido.")
+        else:
+            pass
+        row   = [ x.value for x in sheet[row_index]]
+        nome  = str( row[colunas_existentes['Nome Completo']] or '')
+        email, primeiro_email, segundo_email, terceiro_email = pega_email_e_datas_da_linha(row,colunas_existentes)
+        vai_enviar = False
+        if not email:
+            row_index  +=  1
+            continue
+        if email in config.emails_enviados or email in config.emails_tentando_enviar:
+            print('e-mail repetido') 
+            row_index += 1
+            continue
+        
+        if config.filtro_de_cargos:
+            cargo = FAs.get_cargo(row,colunas_existentes)
+            pass
                 
-            indice_primeiro_email  = FAs.obter_indice_coluna(colunas_existentes, 'Primeiro E-MAIL ENVIADO?')
-            indice_segundo_email   = FAs.obter_indice_coluna(colunas_existentes, 'Segundo email enviado?')
-            indice_terceiro_email  = FAs.obter_indice_coluna(colunas_existentes, 'Terceiro email enviado?')
-
-            primeiro_email  ,  segundo_email  ,  terceiro_email = row[indice_primeiro_email]  ,  row[indice_segundo_email]  ,  row[indice_terceiro_email]
-##            print('cheguei aqui')
-            if email in config.emails_enviados :
-                print('e-mail repetido') 
-                row_index += 1
-                continue
-            if not email:
-                pass
-##                print('email vazio')
-##                print('a row é: ',row)
-##                print('a colunas_existentes é: ',colunas_existentes)
-##                
-                row_index  +=  1
-                continue
             
             # Verifica se o e-mail ainda não foi enviado
-            if email and primeiro_email != 'Email inválido' and not FAs.eh_data_valida(primeiro_email):
-                print('o email é:', email)
-##                print('a coluna primeiro email é: ', primeiro_email)
-##                print('a row que entrou pra enviar no primeiro email é: ',row)
-                resultado = await enviar_email_com_concorrencia(row, config.assunto_primeiro_email, corpo_primeiro_email, email, nome,  semaphore)
-                parar  =  trata_erros_nos_emails_e_salva_planilha(resultado,config.logging,config.erros_consecutivos,row_index,row,sheet,workbook,email,colunas_existentes,valor_colunas_existentes='Primeiro E-MAIL ENVIADO?',indice_email = indice_primeiro_email)
-                if parar:
-                    break
+        condicao= condicao_enviar_email(email,primeiro_email,segundo_email,terceiro_email)
+        if not condicao:
+##                print(f'não é para enviar email para: {email} com os valores primeiro_email: {primeiro_email}, segundo_email: {segundo_email}, terceiro_email: {terceiro_email}')
+            row_index  +=  1
+            continue
+        if condicao == 1:
+            print(f'vou mandar o email: {email} como primeiro email')
+            vai_enviar = True
+            resultado = await enviar_email_com_concorrencia(row, config.assunto_primeiro_email, corpo_primeiro_email, email, nome,  semaphore)
+            parar  =  trata_erros_nos_emails_e_salva_planilha(resultado,config.logging,config.erros_consecutivos,row_index,row,sheet,workbook,email,colunas_existentes,valor_colunas_existentes='Primeiro E-MAIL ENVIADO?',indice_email = indice_primeiro_email)
+            if parar:
+                break
+        if condicao == 2:
+            print(f'email: {email} como segundo email operação suspensa')
+            vai_enviar = False
+##                resultado = await enviar_email_com_concorrencia(row, config.assunto_segundo_email, corpo_segundo_email, email, nome, semaphore)
+##                parar=trata_erros_nos_emails_e_salva_planilha(resultado,config.logging,config.erros_consecutivos,row_index,row,sheet,workbook,email,colunas_existentes,valor_colunas_existentes='Segundo email enviado?', indice_email = indice_segundo_email)
+##                if parar:
+##                    break
+        if condicao == 3:
+            print(f'email: {email} como terceiro email operação suspensa')
+            vai_enviar  =  False
+##                resultado = await enviar_email_com_concorrencia(row, config.assunto_terceiro_email, corpo_terceiro_email, email, nome, semaphore)
+##                parar = trata_erros_nos_emails_e_salva_planilha(resultado,config.logging,config.erros_consecutivos,row_index,row,sheet,workbook,email,colunas_existentes,valor_colunas_existentes='Terceiro email enviado?',indice_email = indice_terceiro_email)
+##                if parar:
+##                    break
 
-            # Verifica se já passou o tempo para enviar o segundo e-mail
-##            print('o valor do primeiro_email é: ',primeiro_email)
-            if segundo_email is None and primeiro_email and dias_passados(primeiro_email) >= 5:
-                print('a coluna segundo email é: ', segundo_email)    
-                resultado = await enviar_email_com_concorrencia(row, config.assunto_segundo_email, corpo_segundo_email, email, nome, semaphore)
-                parar=trata_erros_nos_emails_e_salva_planilha(resultado,config.logging,config.erros_consecutivos,row_index,row,sheet,workbook,email,colunas_existentes,valor_colunas_existentes='Segundo email enviado?', indice_email = indice_segundo_email)
-                if parar:
-                    break
-
-            # Verifica se já passou o tempo para enviar o terceiro e-mail
-##            print('o valor do segundo_email é: ',segundo_email)
-            if terceiro_email is None and segundo_email and dias_passados(segundo_email) >= 7:
-                print('a coluna terceiro email é: ', terceiro_email)
-                resultado = await enviar_email_com_concorrencia(row, config.assunto_terceiro_email, corpo_terceiro_email, email, nome, semaphore)
-                parar = trata_erros_nos_emails_e_salva_planilha(resultado,config.logging,config.erros_consecutivos,row_index,row,sheet,workbook,email,colunas_existentes,valor_colunas_existentes='Terceiro email enviado?',indice_email = indice_terceiro_email)
-                if parar:
-                    break
-
-            row_index += 1
+        row_index += 1
             # Esperar antes de enviar o próximo e-mail
-            intervalo = random.uniform(config.intervalo_min, config.intervalo_max)
+        intervalo = random.uniform(config.intervalo_min, config.intervalo_max)
+        if vai_enviar:
             await asyncio.sleep(intervalo)
 
-        except Exception as e:
-            config.logging.error(f"Erro ao processar a linha {row_index}: {str(e)}")
-            print(f"Erro ao processar a linha {row_index}. Erro: {str(e)}")
-            row_index += 1  # Continuação do processamento, mas registrando o erro
+##        except Exception as e:
+##            config.logging.error(f"Erro ao processar a linha {row_index}: {str(e)}")
+##            print(f"Erro ao processar a linha {row_index}. Erro: {str(e)}")
+##            row_index += 1  # Continuação do processamento, mas registrando o erro
     print('Processamento de e-mails concluído!')
 
+tiveQueCriar , colunas_existentes , sheet , workbook = carregar_planilha()
+fechar_programa = False
+if tiveQueCriar:
+    print('tive que criar coluna nova la no fim do codigo')
+    tiveQueCriar , colunas_existentes , sheet , workbook = carregar_planilha()
+    if sheet is None or workbook is None:
+        fechar_programa = True
+        config.logging.error("Não foi possível carregar a planilha, o processo será encerrado.")
+        print("Não foi possível carregar a planilha. Encerrando o programa.")
+##async def iniciar():
+##    await processar_emails()
 
 # Função principal para rodar o código
 async def main():
-    await processar_emails()
+    await processar_emails(config,sheet,workbook,fechar_programa)
 
 if __name__ == '__main__':
     asyncio.run(main())

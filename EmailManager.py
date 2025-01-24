@@ -1,12 +1,11 @@
 # Arquivo: email_manager.py
-from Config import Config_instance
+from Config import Config_class as conf
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import funcoes_auxiliares as FAs
-config = Config_instance().config
 import asyncio
-conf=config
+
 class EmailManager:
     def __init__(self, host = conf.EMAIL_HOST, port = conf.EMAIL_PORT, user = conf.EMAIL_USER, password = conf.EMAIL_PASSWORD, from_email = conf.FROM_EMAIL):
         self.host = host
@@ -42,6 +41,7 @@ class EmailManager:
     async def enviar_email(self, to_email, subject, body):
         """Envia o e-mail para o destinatário com a tentativa de reconexão."""
         resultado = False
+        conf.emails_tentando_enviar.add(to_email)
 ##        print('entrei na funcao do email manager de enviar email')
 ##        print(f"o email é: {to_email} o assunto é: {subject} e o texto é: {body}")
         for tentativa in range(conf.tentativas_enviar_email):
@@ -60,8 +60,11 @@ class EmailManager:
                 msg.attach(MIMEText(body, 'html'))
                 server.sendmail(self.from_email, to_email, msg.as_string())
                 resultado = True
+                print(f"E-mail enviado com sucesso para {to_email}")
                 conf.logging.info(f"E-mail enviado com sucesso para {to_email}")
                 conf.contador_emails_enviados += 1
+                conf.emails_tentando_enviar.discard(to_email)
+                conf.emails_enviados.add(to_email)
 ##                print('acabei de mandar o email e aqui dentro do email manager o contador é: ',conf.contador_emails_enviados)
                 break  # Sai do loop caso o e-mail seja enviado com sucesso
             except smtplib.SMTPAuthenticationError as e:
@@ -77,11 +80,13 @@ class EmailManager:
                 conf.logging.info(f"Tentando novamente... Tentativa {tentativa + 1}/{conf.tentativas_enviar_email}")
                 await asyncio.sleep(5)  # Espera antes de tentar novamente
 
+        conf.emails_tentando_enviar.discard(to_email)
+        
         return resultado
     
 ##    async def enviar_email(self, to_email, subject, body):
 ##        resultado = False
-##        for tentativa in range(config.tentativas_enviar_email):
+##        for tentativa in range(conf.tentativas_enviar_email):
 ##            try:
 ##                with self.conectar() as server:
 ##                    msg = MIMEMultipart()
@@ -93,6 +98,6 @@ class EmailManager:
 ##                    resultado =  True
 ##                    break
 ##            except Exception as e:
-##                config.logging.error(f"Erro ao enviar e-mail para {to_email}: {e}")
+##                conf.logging.error(f"Erro ao enviar e-mail para {to_email}: {e}")
 ##                resultado = False
 ##        return resultado
