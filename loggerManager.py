@@ -17,31 +17,56 @@ class LoggerManager:
                 with open(path, 'w') as file:
                     json.dump([], file)
 
+
+        if self.valid_logs[self.logger1_path] and not self.valid_logs[self.logger2_path]:
+            print('tive que reparar o log2')
+            self._repair_log(self.logger2_path, self.ler_json(self.logger1_path))
+        elif self.valid_logs[self.logger2_path] and not self.valid_logs[self.logger1_path]:
+            print('tive que reparar o log1')
+            self._repair_log(self.logger1_path, self.ler_json(self.logger2_path))
+            
         # Reconstruct state from the logs
         self.state = {}
         for path in [self.logger1_path, self.logger2_path]:
             try:
                 with open(path, 'r') as file:
-                    for entry in json.load(file):
+                    data  =  json.load(file)
+                    print(f'o numero de entradas no arquivo é: {data}')
+                    for entry in data:
+                        try:
+                            a = entry['nome_planilha']
+                        except:
+                            entry['nome_planilha'] = "RH BRASIL"  
+                        if entry['nome_planilha'] not in self.state:
+                            self.state[entry['nome_planilha']] = {}
+                            
                         row, col = entry['row_index'], entry['column_index']
-                        self.state[(row, col)] = entry['new_value']
+                        self.state[entry['nome_planilha']][(row, col)] = entry['new_value']
+##                            entry['nome_planilha']= "RH BRASIL"
+##                            self.state[entry['nome_planilha']][(row, col)] = entry['new_value']
+                                           
             except (json.JSONDecodeError, FileNotFoundError, IOError):
                 self.valid_logs[path] = False
                 print(f"Warning: Log file '{path}' is corrupted or inaccessible. It will be ignored.")
-    
+        print(f'o state tem {len(self.state)} chaves ')
+        print(f'as chaves do state são: {[x for x in self.state.keys()]}')
+        print(f'o state depois de carregado é:{self.state}')
 
-        if self.valid_logs[self.logger1_path] and not self.valid_logs[self.logger2_path]:
-            self._repair_log(self.logger2_path, self.ler_json(self.logger1_path))
-        elif self.valid_logs[self.logger2_path] and not self.valid_logs[self.logger1_path]:
-            self._repair_log(self.logger1_path, self.ler_json(self.logger2_path))
+        
 
         # Reconstruct in-memory state from the valid log
-        self.state = {}
-        for path, valid in self.valid_logs.items():
-            if valid:
-                for entry in self.ler_json(path):
-                    row, col = entry['row_index'], entry['column_index']
-                    self.state[(row, col)] = entry['new_value']
+##        self.state = {}
+##        for path, valid in self.valid_logs.items():
+##            if valid:                
+##                for entry in self.ler_json(path):
+##                    if len(entry) == 3:
+##                        entry['nome_planilha'] = "RH BRASIL"                        
+##                    if entry['nome_planilha'] not in self.state:
+##                        print(f'acrescentei a chave: {entry["nome_planilha"]} ao state')
+##                        self.state[entry['nome_planilha']] = {}
+##                    
+##                    row, col = entry['row_index'], entry['column_index']
+##                    self.state[entry['nome_planilha']][(row, col)] = entry['new_value']
 
         # Handle case where both logs are invalid
         if not any(self.valid_logs.values()):
@@ -119,16 +144,21 @@ class LoggerManager:
             self.valid_logs[path] = False
             print(f"Error: Unable to write to log file '{path}'. It will be ignored.")
 
-    def update(self, row_index, column_index, new_value):
+    def update(self, row_index, column_index, new_value,nome_planilha):
         """Updates the in-memory state and logs the change."""
         log_entry = {
             "row_index": row_index,
             "column_index": column_index,
-            "new_value": new_value
+            "new_value": new_value,
+            "nome_planilha": nome_planilha
         }
 
         # Update in-memory state
-        self.state[(row_index, column_index)] = new_value
+        try:
+            self.state[nome_planilha][(row_index, column_index)] = new_value
+        except:
+            self.state[nome_planilha]={}
+            self.state[nome_planilha][(row_index, column_index)] = new_value
 
         # Check if any valid logs exist
         if not any(self.valid_logs.values()):
@@ -148,9 +178,9 @@ class LoggerManager:
             for path in [self.logger1_path, self.logger2_path]:
                 self._write_to_log(path, log_entry)
 
-    def get(self, row_index, column_index):
+    def get(self, row_index, column_index, nome_planilha):
         """Retrieves the value for a specific cell from the in-memory state."""
-        return self.state.get((row_index, column_index))
+        return self.state.get(nome_planilha).get((row_index, column_index))
 
     def get_all_state(self):
         """Returns the entire in-memory state as a dictionary."""
