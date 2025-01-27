@@ -6,6 +6,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import funcoes_auxiliares as FAs
 import asyncio
+import traceback
 
 class EmailManager:
     def __init__(self, host = conf.EMAIL_HOST, port = conf.EMAIL_PORT, user = conf.EMAIL_USER, password = conf.EMAIL_PASSWORD, from_email = conf.FROM_EMAIL, imap_host = conf.IMAP_HOST,imap_port = conf.IMAP_PORT):
@@ -100,5 +101,12 @@ class EmailManager:
                 conf.logging.info("E-mail salvo na pasta 'Enviados' com sucesso.")
 
         except Exception as e:
-            conf.logging.error(f"Erro ao salvar e-mail na pasta 'Enviados': {e}") 
+            conf.logging.error(f"Erro ao salvar e-mail na pasta 'Enviados': {e}")
+            print("\nTraceback completo:")
+            traceback.print_exc()
+
+            # Exibir as variáveis locais no momento do erro
+            print("\nVariáveis locais no momento do erro:")
+            for var, value in locals().items():
+                print(f"{var} = {value}")
 

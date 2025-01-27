@@ -1,6 +1,7 @@
 import asyncio , time , smtplib ,  openpyxl , random ,  os , copy 
 from datetime import datetime
 from Config import Config_class as config
+import traceback
 from loggerManager import LoggerManager
 loggerProgressManager = LoggerManager()
 from EmailManager import EmailManager
@@ -54,8 +55,15 @@ def pega_email_e_datas_da_linha(linha , colunas_existentes, filtrar_email = Fals
         terceiro_email = linha[colunas_existentes['Terceiro email enviado?']]
         return email , primeiro_email  ,  segundo_email  ,  terceiro_email
     except:
-        print('a colunas existentes quando deu errro é:',colunas_existentes)
-        print('a linha é: ',linha)
+        print("\nTraceback completo:")
+        traceback.print_exc()
+
+        # Exibir as variáveis locais no momento do erro
+        print("\nVariáveis locais no momento do erro:")
+        for var, value in locals().items():
+            print(f"{var} = {value}")
+##        print('a colunas existentes quando deu errro é:',colunas_existentes)
+##        print('a linha é: ',linha)
 
 def atualiza_planilha_com_logs(sheet_list, loggerProgressManager, workbook):
     """
@@ -175,6 +183,13 @@ def dias_passados(data_str = datetime.now()):
         return delta.days  # Retorna o número de dias passados
     except Exception as e:
         config.logging.error(f"Erro ao calcular dias passados: {str(e)}")
+        print("\nTraceback completo:")
+        traceback.print_exc()
+
+        # Exibir as variáveis locais no momento do erro
+        print("\nVariáveis locais no momento do erro:")
+        for var, value in locals().items():
+            print(f"{var} = {value}")
         return 0  # Retorna 0 em caso de erro, evitando que o erro cause falha no processamento
 
 
@@ -289,81 +304,88 @@ async def processar_emails(config,sheet_list,workbook,fechar_programa):
             
         row_index = 2       ###### começando na segunda linha...
         while row_index <= sheet.max_row:
-    ##        try:
-            if config.contador_emails_enviados >= config.LIMITE_DIARIO:
-                config.logging.info(f"Limite de {config.LIMITE_DIARIO} e-mails enviados no dia alcançado às {datetime.now()}")
-                print('vou descansar por uma hora')
-                workbook.save(f"planilha_atualizada_{sheet.title}.xlsx")
-                await asyncio.sleep(60*60)        
-                config.contador_emails_enviados=0  ## reiniciando a contagem de emails ate o próximo intervalo
-                config.logging.info(f"voltei a enviar e-mail às {datetime.now()}")
-                print('reiniciando o trabalho')
-            else:
-                pass
             try:
-                row   = [ x.value for x in sheet[row_index]]
-            except Exception as e:
-                # Mensagem personalizada
-                print("Ocorreu um erro ao executar o programa! na linha 'row   = [ x.value for x in sheet[row_index]]'")
-                print(f"a sheet é: {sheet}")
-                print(f'o row_index é: {row_index}')
-                print("Erro capturado:", e)  # Exibe o erro original
-                raise 
-                
-            nome  = str( row[colunas_existentes['Nome Completo']] or '')
-            email, primeiro_email, segundo_email, terceiro_email = pega_email_e_datas_da_linha(row,colunas_existentes,filtrar_email = sera_filtrada)
-            vai_enviar = False
-            if not email:
-                row_index  +=  1
-                continue
-            if email in config.emails_enviados or email in config.emails_tentando_enviar:
-                print('e-mail repetido') 
-                row_index += 1
-                continue
-            
-            if config.filtro_de_cargos:
-                cargo = FAs.get_cargo(row,colunas_existentes)
-                
+                if config.contador_emails_enviados >= config.LIMITE_DIARIO:
+                    config.logging.info(f"Limite de {config.LIMITE_DIARIO} e-mails enviados no dia alcançado às {datetime.now()}")
+                    print('vou descansar por uma hora')
+                    workbook.save(f"planilha_atualizada_{sheet.title}.xlsx")
+                    await asyncio.sleep(60*60)        
+                    config.contador_emails_enviados=0  ## reiniciando a contagem de emails ate o próximo intervalo
+                    config.logging.info(f"voltei a enviar e-mail às {datetime.now()}")
+                    print('reiniciando o trabalho')
+                else:
+                    pass
+                try:
+                    row   = [ x.value for x in sheet[row_index]]
+                except Exception as e:
+                    # Mensagem personalizada
+                    print("Ocorreu um erro ao executar o programa! na linha 'row   = [ x.value for x in sheet[row_index]]'")
+                    print(f"a sheet é: {sheet}")
+                    print(f'o row_index é: {row_index}')
+                    print("Erro capturado:", e)  # Exibe o erro original
+                    raise 
                     
-                
-                # Verifica se o e-mail ainda não foi enviado
-            condicao= condicao_enviar_email(email,primeiro_email,segundo_email,terceiro_email)
-            if not condicao:
-    ##                print(f'não é para enviar email para: {email} com os valores primeiro_email: {primeiro_email}, segundo_email: {segundo_email}, terceiro_email: {terceiro_email}')
-                row_index  +=  1
-                continue
-            if condicao == 1:
-                print(f'vou mandar o email: {email} como primeiro email, mas suspendi')
-                vai_enviar = True
-                resultado = await enviar_email_com_concorrencia(row, config.assunto_primeiro_email, corpo_primeiro_email, email, nome,  semaphore)
-                parar  =  trata_erros_nos_emails_e_salva_planilha(resultado,config.logging,config.erros_consecutivos,row_index,row,sheet,workbook,email,colunas_existentes,valor_colunas_existentes='Primeiro E-MAIL ENVIADO?',indice_email = indice_primeiro_email)
-                if parar:
-                    break
-            if condicao == 2:
-                print(f'email: {email} como segundo email operação suspensa')
+                nome  = str( row[colunas_existentes['Nome Completo']] or '')
+                email, primeiro_email, segundo_email, terceiro_email = pega_email_e_datas_da_linha(row,colunas_existentes,filtrar_email = sera_filtrada)
                 vai_enviar = False
-    ##                resultado = await enviar_email_com_concorrencia(row, config.assunto_segundo_email, corpo_segundo_email, email, nome, semaphore)
-    ##                parar=trata_erros_nos_emails_e_salva_planilha(resultado,config.logging,config.erros_consecutivos,row_index,row,sheet,workbook,email,colunas_existentes,valor_colunas_existentes='Segundo email enviado?', indice_email = indice_segundo_email)
-    ##                if parar:
-    ##                    break
-            if condicao == 3:
-                print(f'email: {email} como terceiro email operação suspensa')
-                vai_enviar  =  False
-    ##                resultado = await enviar_email_com_concorrencia(row, config.assunto_terceiro_email, corpo_terceiro_email, email, nome, semaphore)
-    ##                parar = trata_erros_nos_emails_e_salva_planilha(resultado,config.logging,config.erros_consecutivos,row_index,row,sheet,workbook,email,colunas_existentes,valor_colunas_existentes='Terceiro email enviado?',indice_email = indice_terceiro_email)
-    ##                if parar:
-    ##                    break
+                if not email:
+                    row_index  +=  1
+                    continue
+                if email in config.emails_enviados or email in config.emails_tentando_enviar:
+                    print('e-mail repetido') 
+                    row_index += 1
+                    continue
+                
+                if config.filtro_de_cargos:
+                    cargo = FAs.get_cargo(row,colunas_existentes)
+                    
+                        
+                    
+                    # Verifica se o e-mail ainda não foi enviado
+                condicao= condicao_enviar_email(email,primeiro_email,segundo_email,terceiro_email)
+                if not condicao:
+        ##                print(f'não é para enviar email para: {email} com os valores primeiro_email: {primeiro_email}, segundo_email: {segundo_email}, terceiro_email: {terceiro_email}')
+                    row_index  +=  1
+                    continue
+                if condicao == 1:
+                    print(f'vou mandar o email: {email} como primeiro email, mas suspendi')
+                    vai_enviar = True
+                    resultado = await enviar_email_com_concorrencia(row, config.assunto_primeiro_email, corpo_primeiro_email, email, nome,  semaphore)
+                    parar  =  trata_erros_nos_emails_e_salva_planilha(resultado,config.logging,config.erros_consecutivos,row_index,row,sheet,workbook,email,colunas_existentes,valor_colunas_existentes='Primeiro E-MAIL ENVIADO?',indice_email = indice_primeiro_email)
+                    if parar:
+                        break
+                if condicao == 2:
+                    print(f'email: {email} como segundo email operação suspensa')
+                    vai_enviar = False
+        ##                resultado = await enviar_email_com_concorrencia(row, config.assunto_segundo_email, corpo_segundo_email, email, nome, semaphore)
+        ##                parar=trata_erros_nos_emails_e_salva_planilha(resultado,config.logging,config.erros_consecutivos,row_index,row,sheet,workbook,email,colunas_existentes,valor_colunas_existentes='Segundo email enviado?', indice_email = indice_segundo_email)
+        ##                if parar:
+        ##                    break
+                if condicao == 3:
+                    print(f'email: {email} como terceiro email operação suspensa')
+                    vai_enviar  =  False
+        ##                resultado = await enviar_email_com_concorrencia(row, config.assunto_terceiro_email, corpo_terceiro_email, email, nome, semaphore)
+        ##                parar = trata_erros_nos_emails_e_salva_planilha(resultado,config.logging,config.erros_consecutivos,row_index,row,sheet,workbook,email,colunas_existentes,valor_colunas_existentes='Terceiro email enviado?',indice_email = indice_terceiro_email)
+        ##                if parar:
+        ##                    break
 
-            row_index += 1
-                # Esperar antes de enviar o próximo e-mail
-            intervalo = random.uniform(config.intervalo_min, config.intervalo_max)
-            if vai_enviar:
-                await asyncio.sleep(intervalo)
+                row_index += 1
+                    # Esperar antes de enviar o próximo e-mail
+                intervalo = random.uniform(config.intervalo_min, config.intervalo_max)
+                if vai_enviar:
+                    await asyncio.sleep(intervalo)
 
-    ##        except Exception as e:
-    ##            config.logging.error(f"Erro ao processar a linha {row_index}: {str(e)}")
-    ##            print(f"Erro ao processar a linha {row_index}. Erro: {str(e)}")
-    ##            row_index += 1  # Continuação do processamento, mas registrando o erro
+            except Exception as e:
+                config.logging.error(f"Erro ao processar a linha {row_index}: {str(e)}")
+                print(f"Erro ao processar a linha {row_index}. Erro: {str(e)}")
+                print("\nTraceback completo:")
+                traceback.print_exc()
+
+                # Exibir as variáveis locais no momento do erro
+                print("\nVariáveis locais no momento do erro:")
+                for var, value in locals().items():
+                    print(f"{var} = {value}")
+                row_index += 1  # Continuação do processamento, mas registrando o erro
         print('planilha concluida')
         workbook.save(f"planilha_atualizada_{sheet.title}.xlsx")
     print('Processamento de e-mails concluído!')

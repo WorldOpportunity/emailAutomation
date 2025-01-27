@@ -89,6 +89,13 @@ class LoggerManager:
             print(f"Info: Log file '{path}' has been repaired.")
         except (IOError, FileNotFoundError):
             print(f"Error: Unable to repair log file '{path}'.")
+            print("\nTraceback completo:")
+            traceback.print_exc()
+
+            # Exibir as variáveis locais no momento do erro
+            print("\nVariáveis locais no momento do erro:")
+            for var, value in locals().items():
+                print(f"{var} = {value}")
 
     def _create_emergency_log(self):
         """Creates or updates an emergency log file with the current in-memory state."""
@@ -122,6 +129,13 @@ class LoggerManager:
             print(f"Info: Emergency log '{emergency_log_path}' has been created or updated.")
         except (IOError, FileNotFoundError):
             print(f"Error: Unable to create or update emergency log '{emergency_log_path}'.")
+            print("\nTraceback completo:")
+            traceback.print_exc()
+
+            # Exibir as variáveis locais no momento do erro
+            print("\nVariáveis locais no momento do erro:")
+            for var, value in locals().items():
+                print(f"{var} = {value}")
 
 
             
@@ -143,6 +157,13 @@ class LoggerManager:
         except (FileNotFoundError, IOError):
             self.valid_logs[path] = False
             print(f"Error: Unable to write to log file '{path}'. It will be ignored.")
+            print("\nTraceback completo:")
+            traceback.print_exc()
+
+            # Exibir as variáveis locais no momento do erro
+            print("\nVariáveis locais no momento do erro:")
+            for var, value in locals().items():
+                print(f"{var} = {value}")
 
     def update(self, row_index, column_index, new_value,nome_planilha):
         """Updates the in-memory state and logs the change."""
@@ -186,17 +207,4 @@ class LoggerManager:
         """Returns the entire in-memory state as a dictionary."""
         return self.state
 
-### Example usage
-##if __name__ == "__main__":
-##    logger = LoggerManager('logger1.json', 'logger2.json')
-##
-##    # Update specific cells in a hypothetical spreadsheet
-##    logger.update(0, 0, 'Alice')  # Update cell at row 0, column 0
-##    logger.update(1, 1, 'Bob')    # Update cell at row 1, column 1
-##
-##    # Retrieve specific values
-##    print(logger.get(0, 0))  # Output: Alice
-##    print(logger.get(1, 1))  # Output: Bob
-##
-##    # Print the entire in-memory state
-##    print(logger.get_all_state())  # Output: {(0, 0): 'Alice', (1, 1): 'Bob'}
+
