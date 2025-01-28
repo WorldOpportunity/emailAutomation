@@ -8,7 +8,21 @@ class LoggerManager:
         self.state = {}
         self.valid_logs = {logger1_path: True, logger2_path: True}
         self._initialize_logs()
+        
+    def _read_json(self, path):
+        try:
+            with open(path, 'r') as file:
+                return json.load(file)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return []
 
+    def _write_json(self, path, data):
+        try:
+            with open(path, 'w') as file:
+                json.dump(data, file, indent=4)
+        except IOError:
+            print(f"Error: Unable to write to file '{path}'")
+    
     def _initialize_logs(self):
         """Initializes logs and reconstructs in-memory state."""
         # Ensure both log files exist

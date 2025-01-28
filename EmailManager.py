@@ -1,5 +1,6 @@
 # Arquivo: email_manager.py
 from Config import Config_class as conf
+from datetime import datetime, timezone
 import smtplib
 import imaplib
 from email.mime.multipart import MIMEMultipart
@@ -96,7 +97,7 @@ class EmailManager:
                     imap.select('"Sent"')
 
                 # Adiciona a mensagem na pasta "Enviados"
-                imap.append('"Sent"', "\\Seen", imaplib.Time2Internaldate(), raw_message)
+                imap.append('"Sent"', "\\Seen", imaplib.Time2Internaldate(datetime.now(timezone.utc)), raw_message)
                 print("E-mail salvo na pasta 'Enviados' com sucesso.")
                 conf.logging.info("E-mail salvo na pasta 'Enviados' com sucesso.")
 

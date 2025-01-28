@@ -164,10 +164,9 @@ def altera_e_salva(row_index,column_index,value,sheet,workbook):
     coluna_na_tabela  =  column_index + 1
     letra_da_tabela   =  FAs.numero_para_letra_coluna(coluna_na_tabela)
     linha_da_tabela   =  row_index  +  1
-##    print(f'a sigla usada para acesar a celula na hora de alterar é: {letra_da_tabela}{row_index}')
     coordenada = f"{letra_da_tabela}{linha_da_tabela}"
     sheet[coordenada].value = value
-    print(f'no altera e salva temos o row_index = {row_index} o column_index = {column_index} e a coordenada mudada na tabela é: {coordenada} porem o index salvo nos logs para ser pego acrescenta + 1')
+##    print(f'no altera e salva temos o row_index = {row_index} o column_index = {column_index} e a coordenada mudada na tabela é: {coordenada} porem o index salvo nos logs para ser pego acrescenta + 1')
     loggerProgressManager.update(row_index = linha_da_tabela, column_index = coluna_na_tabela , new_value = value,nome_planilha = sheet.title)
     return sheet, coordenada
 
@@ -179,7 +178,6 @@ def dias_passados(data_str = datetime.now()):
         data_email = datetime.strptime(data_str, '%Y-%m-%d %H:%M:%S').replace(hour=0, minute=0, second=0, microsecond=0)  # Converte string de data para objeto datetime
         data_atual = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)  # Obtém a data e hora atuais
         delta = data_atual - data_email  # Calcula a diferença de tempo
-##        print(f'diferença de dias foi:{delta}')
         return delta.days  # Retorna o número de dias passados
     except Exception as e:
         config.logging.error(f"Erro ao calcular dias passados: {str(e)}")
@@ -302,8 +300,9 @@ async def processar_emails(config,sheet_list,workbook,fechar_programa):
         letra_terceiro_primeiro_email  = FAs.numero_para_letra_coluna(indice_terceiro_email)                         
     
             
-        row_index = 2       ###### começando na segunda linha...
+        row_index = 1       ###### começando na segunda linha...
         while row_index <= sheet.max_row:
+            row_index +=1
             try:
                 if config.contador_emails_enviados >= config.LIMITE_DIARIO:
                     config.logging.info(f"Limite de {config.LIMITE_DIARIO} e-mails enviados no dia alcançado às {datetime.now()}")
@@ -329,11 +328,9 @@ async def processar_emails(config,sheet_list,workbook,fechar_programa):
                 email, primeiro_email, segundo_email, terceiro_email = pega_email_e_datas_da_linha(row,colunas_existentes,filtrar_email = sera_filtrada)
                 vai_enviar = False
                 if not email:
-                    row_index  +=  1
                     continue
                 if email in config.emails_enviados or email in config.emails_tentando_enviar:
                     print('e-mail repetido') 
-                    row_index += 1
                     continue
                 
                 if config.filtro_de_cargos:
@@ -342,13 +339,12 @@ async def processar_emails(config,sheet_list,workbook,fechar_programa):
                         
                     
                     # Verifica se o e-mail ainda não foi enviado
-                condicao= condicao_enviar_email(email,primeiro_email,segundo_email,terceiro_email)
+                condicao =  condicao_enviar_email(email,primeiro_email,segundo_email,terceiro_email)
                 if not condicao:
         ##                print(f'não é para enviar email para: {email} com os valores primeiro_email: {primeiro_email}, segundo_email: {segundo_email}, terceiro_email: {terceiro_email}')
-                    row_index  +=  1
                     continue
                 if condicao == 1:
-                    print(f'vou mandar o email: {email} como primeiro email, mas suspendi')
+                    print(f'vou mandar o email: {email} como primeiro email')
                     vai_enviar = True
                     resultado = await enviar_email_com_concorrencia(row, config.assunto_primeiro_email, corpo_primeiro_email, email, nome,  semaphore)
                     parar  =  trata_erros_nos_emails_e_salva_planilha(resultado,config.logging,config.erros_consecutivos,row_index,row,sheet,workbook,email,colunas_existentes,valor_colunas_existentes='Primeiro E-MAIL ENVIADO?',indice_email = indice_primeiro_email)
@@ -369,7 +365,6 @@ async def processar_emails(config,sheet_list,workbook,fechar_programa):
         ##                if parar:
         ##                    break
 
-                row_index += 1
                     # Esperar antes de enviar o próximo e-mail
                 intervalo = random.uniform(config.intervalo_min, config.intervalo_max)
                 if vai_enviar:
@@ -385,7 +380,7 @@ async def processar_emails(config,sheet_list,workbook,fechar_programa):
                 print("\nVariáveis locais no momento do erro:")
                 for var, value in locals().items():
                     print(f"{var} = {value}")
-                row_index += 1  # Continuação do processamento, mas registrando o erro
+                # Continuação do processamento, mas registrando o erro
         print('planilha concluida')
         workbook.save(f"planilha_atualizada_{sheet.title}.xlsx")
     print('Processamento de e-mails concluído!')
